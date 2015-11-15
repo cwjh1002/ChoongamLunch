@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.LauncherTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="colorPrimaryDark">@color/launcher_primaryDark</item>
+        <item name="android:background">@color/launcher_background</item>
+    </style>s
+</resources>

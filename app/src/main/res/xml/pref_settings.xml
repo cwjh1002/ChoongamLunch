@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <CheckBoxPreference
+        android:key="lunch_only"
+        android:defaultValue="false"
+        android:summary="@string/settings_lunch_only_summary"
+        android:title="@string/settings_lunch_only_title" />
+
+    <Preference
+        android:key="load_all"
+        android:summary="@string/settings_load_all_summary"
+        android:title="@string/settings_load_all_title" />
+
+    <Preference
+        android:key="cache"
+        android:summary="@string/settings_delete_cache_summary"
+        android:title="@string/settings_delete_cache_title" />
+
+    <Preference
+        android:key="app_version"
+        android:title="@string/settings_app_version_title" />
+
+</PreferenceScreen>
