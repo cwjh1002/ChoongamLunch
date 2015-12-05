@@ -5,9 +5,7 @@ import android.app.FragmentManager;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Handler;
-import android.os.StrictMode;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
 import android.support.v4.widget.DrawerLayout;
@@ -30,19 +28,12 @@ import android.widget.Toast;
 import com.getbase.floatingactionbutton.FloatingActionButton;
 import com.wdullaer.materialdatetimepicker.date.DatePickerDialog;
 
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
 
-
 public class MainActivity extends AppCompatActivity {
+    private CacheManager cacheManager;
+
     private Toast toast;
     private Calendar calendar;
     private int year, month, day;
@@ -52,15 +43,18 @@ public class MainActivity extends AppCompatActivity {
     private ListView drawerList;
     private DrawerLayout drawerLayout;
     private ActionBarDrawerToggle drawerToggle;
-    private static File cacheDir;
     private static boolean isLunchOnly = false;
+
+    public CacheManager getCacheManager() {
+        return cacheManager;
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        cacheDir = getCacheDir();
+        cacheManager = new CacheManager(getCacheDir());
 
         calendar = new GregorianCalendar();
 
@@ -73,14 +67,14 @@ public class MainActivity extends AppCompatActivity {
 
         isLunchOnly = PreferenceManager.getDefaultSharedPreferences(this).getBoolean("lunch_only", false);
 
-        TextView textView = (TextView) MainActivity.this.findViewById(R.id.calendar_text);
-        textView.setText(String.format("%d. %d. %d. (%s)", year, month, day, date));
-
-        loadData(new Handler(), true);
-
         swipeRefreshLayout = (SwipeRefreshLayout) this.findViewById(R.id.swipe_refresh_layout);
         swipeRefreshLayout.setOnRefreshListener(refreshListener);
         swipeRefreshLayout.setColorSchemeResources(R.color.refresh_color);
+
+        TextView textView = (TextView) MainActivity.this.findViewById(R.id.calendar_text);
+        textView.setText(String.format("%d. %d. %d. (%s)", year, month, day, date));
+
+        updateData(false);
 
         String[] drawerItems = getResources().getStringArray(R.array.drawerItems);
         drawerList = (ListView) this.findViewById(R.id.drawer_list);
@@ -111,12 +105,6 @@ public class MainActivity extends AppCompatActivity {
             MainActivity.this.year = calendar.get(Calendar.YEAR);
             MainActivity.this.month = calendar.get(Calendar.MONTH) + 1;
             MainActivity.this.day = calendar.get(Calendar.DAY_OF_MONTH);
-            String date = dayOfWeek[calendar.get(Calendar.DAY_OF_WEEK) - 1];
-
-            String msg = String.format("%d. %d. %d. (%s)", year, month, day, date);
-
-            TextView textView = (TextView) MainActivity.this.findViewById(R.id.calendar_text);
-            textView.setText(msg);
 
             if (!isChanged) {
                 swipeRefreshLayout.setRefreshing(true);
@@ -124,11 +112,8 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            loadData(new Handler(), false);
-
-            if (toast != null) toast.cancel();
-            toast = Toast.makeText(MainActivity.this, msg + " " + getString(R.string.msg_set_date), Toast.LENGTH_SHORT);
-            toast.show();
+            changeDateText(true);
+            updateData(false);
         }
     };
 
@@ -144,28 +129,7 @@ public class MainActivity extends AppCompatActivity {
         public void onRefresh() {
             swipeRefreshLayout.setRefreshing(true);
 
-            final Handler handler = new Handler();
-            final Handler handler2 = new Handler();
-
-            Thread thread = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    loadData(handler, false);
-
-                    handler2.postDelayed(new Runnable() {
-                        @Override
-                        public void run() {
-                            swipeRefreshLayout.setRefreshing(false);
-
-                            if (toast != null) toast.cancel();
-                            toast = Toast.makeText(MainActivity.this, getString(R.string.msg_refresh), Toast.LENGTH_SHORT);
-                            toast.show();
-                        }
-                    }, 1000);
-                }
-            });
-
-            thread.start();
+            updateData(true);
         }
     };
 
@@ -210,22 +174,9 @@ public class MainActivity extends AppCompatActivity {
             year = calendar.get(Calendar.YEAR);
             month = calendar.get(Calendar.MONTH) + 1;
             day = calendar.get(Calendar.DAY_OF_MONTH);
-            String date = dayOfWeek[calendar.get(Calendar.DAY_OF_WEEK) - 1];
 
-            String msg = String.format("%d. %d. %d. (%s)", year, month, day, date);
-
-            TextView textView = (TextView) MainActivity.this.findViewById(R.id.calendar_text);
-            textView.setText(msg);
-
-            final Handler handler = new Handler();
-            Thread thread = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    loadData(handler, true);
-                }
-            });
-
-            thread.start();
+            changeDateText(false);
+            updateData(false);
 
             return true;
         } else if (id == R.id.action_tomorrow) {
@@ -234,22 +185,9 @@ public class MainActivity extends AppCompatActivity {
             year = calendar.get(Calendar.YEAR);
             month = calendar.get(Calendar.MONTH) + 1;
             day = calendar.get(Calendar.DAY_OF_MONTH);
-            String date = dayOfWeek[calendar.get(Calendar.DAY_OF_WEEK) - 1];
 
-            String msg = String.format("%d. %d. %d. (%s)", year, month, day, date);
-
-            TextView textView = (TextView) MainActivity.this.findViewById(R.id.calendar_text);
-            textView.setText(msg);
-
-            final Handler handler = new Handler();
-            Thread thread = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    loadData(handler, true);
-                }
-            });
-
-            thread.start();
+            changeDateText(false);
+            updateData(false);
 
             return true;
         }
@@ -266,102 +204,117 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void loadData(Handler handler, final boolean playAnim) {
-        if (isLoading) return;
+    public void changeDateText(boolean showToast) {
+        String date = dayOfWeek[calendar.get(Calendar.DAY_OF_WEEK) - 1];
 
-        isLoading = true;
+        String msg = String.format("%d. %d. %d. (%s)", year, month, day, date);
 
-        if (Build.VERSION.SDK_INT > 9) {
-            StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
-            StrictMode.setThreadPolicy(policy);
+        TextView textView = (TextView) MainActivity.this.findViewById(R.id.calendar_text);
+        textView.setText(msg);
+
+        if (showToast) {
+            if (toast != null)
+                toast.cancel();
+            toast = Toast.makeText(MainActivity.this, msg + " " + getString(R.string.msg_set_date), Toast.LENGTH_SHORT);
+            toast.show();
         }
+    }
+
+    public void updateData(final boolean hasDelay) {
+        final Handler handler0 = new Handler();
+        final Handler handler1 = new Handler();
+
+        Thread thread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                changeDietText(hasDelay, handler0);
+
+                handler1.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (swipeRefreshLayout.isRefreshing()) {
+                            swipeRefreshLayout.setRefreshing(false);
+
+                            if (toast != null)
+                                toast.cancel();
+                            toast = Toast.makeText(MainActivity.this, getString(R.string.msg_refresh), Toast.LENGTH_SHORT);
+                            toast.show();
+                        }
+                    }
+                }, 1000);
+            }
+        });
+
+        thread.start();
+    }
+
+    private void changeDietText(boolean hasDelay, Handler handler) {
+        if (isLoading) return;
 
         final TextView lunchView = (TextView) this.findViewById(R.id.lunch);
         final TextView dinnerView = (TextView) this.findViewById(R.id.dinner);
 
-        if (playAnim) {
-            final String loading = getString(R.string.loading);
+        isLoading = true;
+
+        MealData data = getCacheManager().loadCache(year, month, day);
+        final String lunchText, dinnerText;
+
+        if (data == null) {
+            // 저장된 캐시가 없을 경우 학교 홈페이지에서 HTML을 파싱한다.
+
+            // 데이터 로드 중임을 텍스트로 표시한다.
+            final String loadingText = getString(R.string.loading);
 
             handler.post(new Runnable() {
                 @Override
                 public void run() {
-                    lunchView.setText(loading);
-                    dinnerView.setText((isLunchOnly) ? "-" : loading);
+                    lunchView.setText(loadingText);
+                    dinnerView.setText((isLunchOnly) ? "-" : loadingText);
                 }
             });
-        }
 
-        final String[] cache = loadCache(year, month, day);
-        if (cache == null || cache.length < 2) {
-            final Object data = parseHtml(year, month, day);
+            data = getCacheManager().parseHtml(year, month, day);
 
-            if (data instanceof Integer) {
-                int val = (int) data;
+            if (data.getState() == MealData.DataState.NOT_CONNECTED) {
+                String text = getString(R.string.error_connection);
 
-                if (val == 0) {
-                    String text = getString(R.string.error_connection);
+                lunchText = text;
+                dinnerText = text;
+            } else if (data.getState() == MealData.DataState.BLANK) {
+                String text = getString(R.string.error_no_data);
 
-                    lunchView.setText(text);
-                    dinnerView.setText(text);
-
-                    isLoading = false;
-                } else if (val == 1) {
-                    final String text = getString(R.string.error_no_data);
-
-                    handler.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            lunchView.setText(text);
-                            dinnerView.setText((isLunchOnly) ? "-" : text);
-
-                            isLoading = false;
-                        }
-                    });
-                }
+                lunchText = text;
+                dinnerText = text;
             } else {
-                final String[] arr = (String[]) data;
+                lunchText = data.getLunchText();
+                dinnerText = data.getDinnerText();
 
-                handler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        lunchView.setText(arr[0]);
-                        dinnerView.setText((isLunchOnly) ? "-" : arr[1]);
-                        updateTextSize(lunchView);
-                        updateTextSize(dinnerView);
-
-                        if (playAnim) {
-                            Animation anim = new AlphaAnimation(0.0F, 1.0F);
-                            anim.setDuration(1000);
-                            lunchView.setAnimation(anim);
-                            dinnerView.setAnimation(anim);
-                        }
-
-                        isLoading = false;
-                    }
-                });
-
-                saveCache(year, month, day, arr);
+                getCacheManager().saveCache(year, month, day, data);
             }
         } else {
-            handler.post(new Runnable() {
-                @Override
-                public void run() {
-                    lunchView.setText(cache[0]);
-                    dinnerView.setText((isLunchOnly) ? "-" : cache[1]);
-                    updateTextSize(lunchView);
-                    updateTextSize(dinnerView);
-
-                    if (playAnim) {
-                        Animation anim = new AlphaAnimation(0.0F, 1.0F);
-                        anim.setDuration(1000);
-                        lunchView.setAnimation(anim);
-                        dinnerView.setAnimation(anim);
-                    }
-
-                    isLoading = false;
-                }
-            });
+            // 저장된 캐시가 있을 경우 반영한다.
+            lunchText = data.getLunchText();
+            dinnerText = data.getDinnerText();
         }
+
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                lunchView.setText(lunchText);
+                dinnerView.setText((isLunchOnly) ? "-" : dinnerText);
+
+                updateTextSize(lunchView);
+                updateTextSize(dinnerView);
+
+                Animation anim = new AlphaAnimation(0.0F, 1.0F);
+                anim.setDuration(1000);
+
+                lunchView.setAnimation(anim);
+                dinnerView.setAnimation(anim);
+
+                isLoading = false;
+            }
+        }, hasDelay ? 1000 : 0);
     }
 
     private void updateTextSize(TextView view) {
@@ -375,84 +328,6 @@ public class MainActivity extends AppCompatActivity {
         }
 
         view.setTextSize(TypedValue.COMPLEX_UNIT_SP, lineCount >= 6 ? 14.0F : 16.0F);
-    }
-
-    public static Object parseHtml(int year, int month, int day) {
-        String url = "http://www.cham.hs.kr/tablemenu/menu.do?y=" + year + "&m=" + month + "&d=" + day;
-        Document doc;
-
-        try {
-            doc = Jsoup.connect(url).get();
-        } catch (IOException e) {
-            return 0;
-        }
-
-        String[] value = doc.body().html().split("<div class=\"style1\" style=\"padding-top:15px;\">");
-
-        for (int i = 0; i < value.length; i ++) {
-            String[] split = value[i].split("</div><br> ");
-            value[i] = (split.length < 2) ? split[0] : split[1];
-        }
-
-        try {
-            String lunch = value[1].split(" </td>")[0].replaceAll(",", "\n");
-            String dinner = value[2].split(" </td>")[0].replaceAll(",", "\n");
-
-            return new String[]{lunch, dinner};
-        } catch (ArrayIndexOutOfBoundsException ex) {
-            return 1;
-        }
-    }
-
-    public static void saveCache(int year, int month, int day, String[] value) {
-        File file;
-        FileWriter writer;
-
-        try {
-            file = new File(cacheDir, String.format("%d_%d_%d", year, month, day) + ".tmp");
-            if (!file.createNewFile()) {
-                return;
-            }
-
-            writer = new FileWriter(file);
-            writer.write(value[0] + "|" + value[1]);
-            writer.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public static String[] loadCache(int year, int month, int day) {
-        File file = new File(cacheDir, String.format("%d_%d_%d", year, month, day) + ".tmp");
-        if (!file.exists()) return null;
-
-        StringBuilder builder = new StringBuilder();
-
-        try {
-            BufferedReader br = new BufferedReader(new FileReader(file));
-
-            String line;
-            while ((line = br.readLine()) != null) {
-                builder.append(line);
-                builder.append('\n');
-            }
-
-            br.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        return builder.toString().split("\\|");
-    }
-
-    public static boolean clearCache() {
-        for (File file : cacheDir.listFiles()) {
-            if (!file.delete()) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     public static void setLunchOnly(boolean value) {

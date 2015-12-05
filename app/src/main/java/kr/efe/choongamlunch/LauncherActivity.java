@@ -1,14 +1,11 @@
 package kr.efe.choongamlunch;
 
 import android.content.Intent;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.support.v7.app.AppCompatActivity;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.view.Window;
-import android.view.WindowManager;
 
 
 public class LauncherActivity extends AppCompatActivity {

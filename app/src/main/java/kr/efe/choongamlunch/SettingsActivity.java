@@ -86,12 +86,13 @@ public class SettingsActivity extends AppCompatActivity {
                 int month = calendar.get(Calendar.MONTH) + 1;
 
                 for (int day = 1; day <= calendar.getActualMaximum(Calendar.DAY_OF_MONTH); day++) {
-                    Object data = MainActivity.parseHtml(year, month, day);
+                    CacheManager manager = CacheManager.getInstance();
+                    MealData data = manager.parseHtml(year, month, day);
 
-                    if (data instanceof Integer)
+                    if (data.getState() != MealData.DataState.LOADED)
                         continue;
 
-                    MainActivity.saveCache(year, month, day, (String[]) data);
+                    manager.saveCache(year, month, day, data);
                 }
 
                 handler.post(new Runnable() {
@@ -152,7 +153,7 @@ public class SettingsActivity extends AppCompatActivity {
 
                         break;
                     case "cache":
-                        MainActivity.clearCache();
+                        CacheManager.getInstance().clearCache();
 
                         if (toast != null) toast.cancel();
                         toast = Toast.makeText(preference.getContext(), getString(R.string.delete_cache), Toast.LENGTH_SHORT);
