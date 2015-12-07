@@ -74,7 +74,7 @@ public class MainActivity extends AppCompatActivity {
         TextView textView = (TextView) MainActivity.this.findViewById(R.id.calendar_text);
         textView.setText(String.format("%d. %d. %d. (%s)", year, month, day, date));
 
-        updateData(false);
+        updateData(false, false);
 
         String[] drawerItems = getResources().getStringArray(R.array.drawerItems);
         drawerList = (ListView) this.findViewById(R.id.drawer_list);
@@ -113,7 +113,7 @@ public class MainActivity extends AppCompatActivity {
             }
 
             changeDateText(true);
-            updateData(false);
+            updateData(false, false);
         }
     };
 
@@ -129,7 +129,7 @@ public class MainActivity extends AppCompatActivity {
         public void onRefresh() {
             swipeRefreshLayout.setRefreshing(true);
 
-            updateData(true);
+            updateData(true, true);
         }
     };
 
@@ -176,7 +176,7 @@ public class MainActivity extends AppCompatActivity {
             day = calendar.get(Calendar.DAY_OF_MONTH);
 
             changeDateText(false);
-            updateData(false);
+            updateData(false, false);
 
             return true;
         } else if (id == R.id.action_tomorrow) {
@@ -187,7 +187,7 @@ public class MainActivity extends AppCompatActivity {
             day = calendar.get(Calendar.DAY_OF_MONTH);
 
             changeDateText(false);
-            updateData(false);
+            updateData(false, false);
 
             return true;
         }
@@ -220,14 +220,14 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    public void updateData(final boolean hasDelay) {
+    public void updateData(final boolean reload, final boolean hasDelay) {
         final Handler handler0 = new Handler();
         final Handler handler1 = new Handler();
 
         Thread thread = new Thread(new Runnable() {
             @Override
             public void run() {
-                changeDietText(hasDelay, handler0);
+                changeDietText(reload, hasDelay, handler0);
 
                 handler1.postDelayed(new Runnable() {
                     @Override
@@ -248,7 +248,7 @@ public class MainActivity extends AppCompatActivity {
         thread.start();
     }
 
-    private void changeDietText(boolean hasDelay, Handler handler) {
+    private void changeDietText(boolean reload, boolean hasDelay, Handler handler) {
         if (isLoading) return;
 
         final TextView lunchView = (TextView) this.findViewById(R.id.lunch);
@@ -259,7 +259,7 @@ public class MainActivity extends AppCompatActivity {
         MealData data = getCacheManager().loadCache(year, month, day);
         final String lunchText, dinnerText;
 
-        if (data == null) {
+        if (data == null || reload) {
             // 저장된 캐시가 없을 경우 학교 홈페이지에서 HTML을 파싱한다.
 
             // 데이터 로드 중임을 텍스트로 표시한다.
